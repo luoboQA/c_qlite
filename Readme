@@ -1,0 +1,111 @@
+# CQLite - B+树数据库
+
+一个轻量级的嵌入式数据库实现，使用B+树作为索引结构，支持持久化存储和基本SQL操作。
+
+## 核心特性
+
+- **B+树索引**：高效的树形数据结构，支持快速查找、插入操作，所有数据存储在叶子节点，内部节点仅存储键和子节点指针
+- **持久化存储**：数据持久化保存到文件，支持数据库重启后完整恢复
+- **页面管理**：以4KB为单位的分页存储，支持页面缓存和懒加载，减少磁盘I/O
+- **叶子节点链表**：叶子节点之间通过指针连接
+- **自动分裂**：节点满时自动分裂（叶子节点分裂/内部节点分裂），保持B+树平衡
+- **元命令支持**：内置 `.exit`、`.btree`、`.constants` 等调试命令，便于查看树结构和常量信息
+
+## 测试
+rspec spec/main_spec.rb 
+## 项目结构
+
+c_qlite.c
+│
+├── 数据结构定义
+│ ├── InputBuffer # 输入缓冲区，处理用户命令行输入
+│ ├── Row # 行数据结构（id, username, email）
+│ ├── Statement # SQL语句封装（INSERT/SELECT）
+│ ├── Pager # 页面管理器，负责文件读写和页面缓存
+│ ├── Table # 数据库表，包含根页面号和页面管理器
+│ ├── Cursor # 游标，用于遍历B+树中的记录
+│ │
+│ └── B+ Tree Node # 节点结构（叶子节点/内部节点）
+│ ├── Common Header # 公共头部（节点类型、是否为根、父节点指针）
+│ ├── Leaf Node # 叶子节点（存储键值对，指向下一个叶子节点）
+│ └── Internal Node # 内部节点（存储键和子节点指针）
+│
+├── 常量定义
+│ ├── 行布局常量 # ID_SIZE, USERNAME_SIZE, EMAIL_SIZE, ROW_SIZE
+│ ├── 页面常量 # PAGE_SIZE, TABLE_MAX_PAGES
+│ ├── 节点布局常量 # 各类节点头部、单元格大小
+│ └── 节点容量常量 # LEAF_NODE_MAX_CELLS, INTERNAL_NODE_MAX_KEYS
+│
+├── 节点操作函数
+│ ├── get_node_type / set_node_type # 获取/设置节点类型
+│ ├── is_node_root / set_node_root # 获取/设置是否为根节点
+│ ├── node_parent # 获取父节点指针
+│ ├── 叶子节点操作
+│ │ ├── leaf_node_num_cells # 获取单元格数量
+│ │ ├── leaf_node_next_leaf # 获取下一个叶子节点页码
+│ │ ├── leaf_node_cell / key / value # 获取单元格/键/值
+│ │ └── initialize_leaf_node # 初始化叶子节点
+│ └── 内部节点操作
+│ ├── internal_node_num_keys # 获取键数量
+│ ├── internal_node_right_child # 获取右子节点
+│ ├── internal_node_cell / child / key # 获取单元格/子节点/键
+│ └── initialize_internal_node # 初始化内部节点
+│
+├── 页面管理函数
+│ ├── pager_open # 打开数据库文件，初始化页面管理器
+│ ├── get_page # 获取页面（支持缓存和懒加载）
+│ ├── pager_flush # 将页面写回磁盘
+│ └── get_unused_page_num # 获取新页面页码
+│
+├── B+树查找函数
+│ ├── table_find # 从根节点开始查找键
+│ ├── internal_node_find # 在内部节点中递归查找
+│ ├── internal_node_find_child # 在内部节点中二分查找子节点索引
+│ └── leaf_node_find # 在叶子节点中二分查找键
+│
+├── B+树插入函数
+│ ├── leaf_node_insert # 叶子节点插入（满则分裂）
+│ ├── leaf_node_split_and_insert # 叶子节点分裂并插入
+│ ├── internal_node_insert # 内部节点插入（满则分裂）
+│ ├── internal_node_split_and_insert # 内部节点分裂并插入
+│ ├── create_new_root # 创建新的根节点
+│ └── update_internal_node_key # 更新内部节点中的键
+│
+├── 游标操作函数
+│ ├── table_start # 创建指向最小键的游标
+│ ├── cursor_value # 获取游标当前位置的值
+│ └── cursor_advance # 移动游标到下一个位置
+│
+├── 行序列化函数
+│ ├── serialize_row # 将Row结构序列化为字节流
+│ └── deserialize_row # 将字节流反序列化为Row结构
+│
+├── 命令处理函数
+│ ├── do_meta_command # 处理元命令（.exit, .btree, .constants）
+│ ├── prepare_statement # 预处理SQL语句
+│ └── prepare_insert # 预处理INSERT语句（参数解析、验证）
+│
+├── 执行函数
+│ ├── execute_statement # 执行SQL语句分发器
+│ ├── execute_insert # 执行INSERT操作
+│ └── execute_select # 执行SELECT操作
+│
+├── 辅助函数
+│ ├── print_row # 打印行数据
+│ ├── print_constants # 打印编译时常量
+│ ├── print_tree # 递归打印B+树结构（调试）
+│ ├── indent # 打印缩进（辅助print_tree）
+│ ├── get_node_max_key # 获取节点中的最大键
+│ └── db_close # 关闭数据库，持久化所有页面
+│
+├── 输入处理函数
+│ ├── new_input_buffer # 创建输入缓冲区
+│ ├── read_input # 读取用户输入
+│ ├── print_prompt # 打印提示符
+│ └── close_input_buffer # 关闭输入缓冲区
+│
+└── main # 程序入口，主循环
+
+## to be continued
+支持高效的范围扫描和顺序遍历
+b+tree 删除平衡逻辑
